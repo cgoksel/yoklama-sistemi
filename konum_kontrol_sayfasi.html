@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yoklama - Konum Kontrolü</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 500px;
+            width: 100%;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            text-align: center;
+        }
+
+        .logo {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-size: 28px;
+            color: #1f2937;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #6b7280;
+            font-size: 14px;
+            margin-bottom: 30px;
+        }
+
+        .status {
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .status.loading {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .status.success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .status.error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .spinner {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .info-box {
+            background: #f9fafb;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            text-align: left;
+        }
+
+        .info-box p {
+            font-size: 13px;
+            color: #4b5563;
+            line-height: 1.6;
+            margin-bottom: 8px;
+        }
+
+        .info-box p:last-child {
+            margin-bottom: 0;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 10px;
+            font-weight: 600;
+            margin-top: 20px;
+            transition: transform 0.3s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .distance-info {
+            font-size: 18px;
+            font-weight: 700;
+            color: #667eea;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">📍</div>
+        <h1>Yoklama Sistemi</h1>
+        <p class="subtitle">Manisa CBÜ Sağlık Bilimleri Fakültesi</p>
+
+        <div id="statusBox" class="status loading">
+            <div class="spinner"></div>
+            <p>Konumunuz kontrol ediliyor...</p>
+        </div>
+
+        <div id="infoBox" class="info-box" style="display: none;">
+            <p><span class="info-label">📍 Konumunuz:</span> <span id="userLocation">--</span></p>
+            <p><span class="info-label">🏫 Sınıf Konumu:</span> B Blok</p>
+            <p><span class="info-label">📏 Mesafe:</span> <span id="distance">--</span></p>
+        </div>
+    </div>
+
+    <script>
+        // BURAYA GOOGLE FORMS LİNKİNİZİ YAPIŞTIRIN
+        const GOOGLE_FORMS_URL = "https://docs.google.com/forms/d/e/1FAIpQLSfqplDmOLMy3IAzEcvVfJsCSEjrobG1njhfxDF49NVYzLhPLQ/viewform?usp=pp_url&entry.1353730145=KONUM_BURAYA";
+        
+        // Sınıf koordinatları
+        const SINIF_LAT = 38.610465;
+        const SINIF_LON = 27.381204;
+        const YARICAP_METRE = 100; // 100 metre yarıçap
+
+        // İki koordinat arasındaki mesafeyi hesapla (Haversine formülü)
+        function hesaplaMesafe(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; // Dünya yarıçapı (metre)
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+            const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+            return R * c; // Metre cinsinden mesafe
+        }
+
+        // Başarı durumu
+        function konumBasarili(position) {
+            const userLat = position.coords.latitude;
+            const userLon = position.coords.longitude;
+            const dogruluk = Math.round(position.coords.accuracy);
+
+            // Mesafeyi hesapla
+            const mesafe = hesaplaMesafe(userLat, userLon, SINIF_LAT, SINIF_LON);
+            const mesafeStr = Math.round(mesafe) + " metre";
+
+            // Bilgi kutusunu göster
+            document.getElementById('userLocation').textContent = 
+                `${userLat.toFixed(6)}, ${userLon.toFixed(6)} (±${dogruluk}m)`;
+            document.getElementById('distance').textContent = mesafeStr;
+            document.getElementById('infoBox').style.display = 'block';
+
+            const statusBox = document.getElementById('statusBox');
+
+            // Sınıf içinde mi kontrol et
+            if (mesafe <= YARICAP_METRE) {
+                // BAŞARILI - Sınıf içinde
+                statusBox.className = 'status success';
+                statusBox.innerHTML = `
+                    <p style="font-size: 48px; margin-bottom: 10px;">✅</p>
+                    <p>Konum Doğrulandı!</p>
+                    <p style="font-size: 14px; margin-top: 10px; opacity: 0.8;">Sınıf içindesiniz. Form açılıyor...</p>
+                `;
+
+                // Konum bilgisini Google Forms linkine ekle
+                const konumBilgisi = `${userLat.toFixed(6)},${userLon.toFixed(6)} (${mesafeStr})`;
+                const formUrl = GOOGLE_FORMS_URL.replace('KONUM_BURAYA', encodeURIComponent(konumBilgisi));
+
+                // 2 saniye sonra Google Forms'a yönlendir
+                setTimeout(() => {
+                    window.location.href = formUrl;
+                }, 2000);
+
+            } else {
+                // HATA - Sınıf dışında
+                statusBox.className = 'status error';
+                statusBox.innerHTML = `
+                    <p style="font-size: 48px; margin-bottom: 10px;">❌</p>
+                    <p>Sınıf Dışındasınız!</p>
+                    <p style="font-size: 14px; margin-top: 10px; opacity: 0.8;">Yoklama vermek için sınıfta olmalısınız.</p>
+                    <div class="distance-info">${mesafeStr} uzaktasınız</div>
+                    <p style="font-size: 12px; margin-top: 10px; opacity: 0.7;">İzin verilen mesafe: ${YARICAP_METRE} metre</p>
+                `;
+            }
+        }
+
+        // Hata durumu
+        function konumHatasi(error) {
+            const statusBox = document.getElementById('statusBox');
+            statusBox.className = 'status error';
+
+            let mesaj = '';
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    mesaj = "Konum izni reddedildi. Lütfen tarayıcı ayarlarından konum iznini açın.";
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    mesaj = "Konum bilgisi alınamadı. GPS'inizi kontrol edin.";
+                    break;
+                case error.TIMEOUT:
+                    mesaj = "Konum alma zaman aşımına uğradı. Tekrar deneyin.";
+                    break;
+                default:
+                    mesaj = "Bilinmeyen bir hata oluştu.";
+            }
+
+            statusBox.innerHTML = `
+                <p style="font-size: 48px; margin-bottom: 10px;">⚠️</p>
+                <p>Konum Alınamadı</p>
+                <p style="font-size: 14px; margin-top: 10px; opacity: 0.8;">${mesaj}</p>
+                <a href="#" onclick="window.location.reload()" class="btn">Tekrar Dene</a>
+            `;
+        }
+
+        // Sayfa yüklendiğinde konum al
+        if ("geolocation" in navigator) {
+            navigator.geolocation.getCurrentPosition(konumBasarili, konumHatasi, {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+            });
+        } else {
+            document.getElementById('statusBox').className = 'status error';
+            document.getElementById('statusBox').innerHTML = `
+                <p style="font-size: 48px; margin-bottom: 10px;">❌</p>
+                <p>Tarayıcınız Konum Desteği Vermiyor</p>
+                <p style="font-size: 14px; margin-top: 10px; opacity: 0.8;">Lütfen modern bir tarayıcı kullanın.</p>
+            `;
+        }
+    </script>
+</body>
+</html>
